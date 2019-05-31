@@ -3,5 +3,5 @@ hunter_config(Boost VERSION 1.66.0)
 
 hunter_config(ethash VERSION 0.4.5
     URL https://github.com/HawyUkr/ethash-1/archive/v0.4.5.tar.gz
-    SHA1 12a7ad52809ca74f2a5e8f849408f0ebf795719c
+    SHA1 e8fd047cf913aaaa6c02b73694e30a1805d1036c
 )
