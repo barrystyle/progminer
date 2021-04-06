@@ -1,3 +1,5 @@
+//! barrystyle 06042021
+
 #include "EthGetworkClient.h"
 
 #include <chrono>
@@ -9,6 +11,42 @@ using namespace dev;
 using namespace eth;
 
 using boost::asio::ip::tcp;
+
+//! https://github.com/bitcoin/bitcoin/blob/0.21/src/util/strencodings.h#L175-L197 
+template<int frombits, int tobits, bool pad, typename O, typename I>
+bool ConvertBits(const O& outfn, I it, I end) {
+    size_t acc = 0;
+    size_t bits = 0;
+    constexpr size_t maxv = (1 << tobits) - 1;
+    constexpr size_t max_acc = (1 << (frombits + tobits - 1)) - 1;
+    while (it != end) {
+        acc = ((acc << frombits) | *it) & max_acc;
+        bits += frombits;
+        while (bits >= tobits) {
+            bits -= tobits;
+            outfn((acc >> bits) & maxv);
+        }
+        ++it;
+    }
+    if (pad) {
+        if (bits) outfn((acc << (tobits - bits)) & maxv);
+    } else if (bits >= frombits || ((acc << (tobits - bits)) & maxv)) {
+        return false;
+    }
+    return true;
+}
+
+//! https://github.com/bitcoin/bitcoin/blob/0.21/src/util/strencodings.cpp#L129-L143
+std::string EncodeBase64(const std::string& input)
+{
+    static const char *pbase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    std::string str;
+    str.reserve(((input.size() + 2) / 3) * 4);
+    ConvertBits<8, 6, true>([&](int v) { str += pbase64[v]; }, input.begin(), input.end());
+    while (str.size() % 4) str += '=';
+    return str;
+}
 
 EthGetworkClient::EthGetworkClient(int worktimeout, unsigned farmRecheckPeriod)
   : PoolClient(),
@@ -149,13 +187,16 @@ void EthGetworkClient::handle_connect(const boost::system::error_code& ec)
                     // Make sure path begins with "/"
                     string _path = (m_conn->Path().empty() ? "/" : m_conn->Path());
 
-                    os << "POST " << _path << " HTTP/1.0\r\n";
+                    os << "POST " << _path << " HTTP/1.1\r\n";
                     os << "Host: " << m_conn->Host() << "\r\n";
-                    os << "Content-Type: application/json"
-                       << "\r\n";
-                    os << "Content-Length: " << line->length() << "\r\n";
-                    os << "Connection: close\r\n\r\n";  // Double line feed to mark the
-                                                        // beginning of body
+                    os << "Connection: close\r\n";  // Double line feed to mark the
+
+                    std::stringstream userauth;
+                    userauth << m_conn->User() << ":" << m_conn->Pass();
+
+                    os << "Authorization: Basic " << EncodeBase64(userauth.str()).c_str() << "\r\n";
+                    os << "Content-Length: " << line->length() << "\r\n\r\n";
+
                     // The payload
                     os << *line;
 
